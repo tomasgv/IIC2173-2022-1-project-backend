@@ -1,0 +1,128 @@
+version: "3.7"
+
+services:
+  db:
+    image: 'mdillon/postgis:latest'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - app-network
+
+  app:
+    build:
+      context: .
+      dockerfile: ./rest_api/Dockerfile
+    ports:
+      - 3000:3000
+    depends_on:
+      - db
+    networks:
+      - app-network
+    volumes:
+     - ./rest_api:/api
+
+  redis:
+    image: redis:7.0.0-alpine
+    networks:
+      - app-network
+
+  web:
+    build:
+        context: .
+        dockerfile: ./celery/Dockerfile
+    command: python celery/manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/opt/
+    ports:
+      - 8000:8000
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - db
+    networks:
+      - app-network
+
+  # In order to have a task executed without terminal
+  celery:
+    build:
+      context: .
+      dockerfile: ./celery/Dockerfile
+    command: celery -A main worker -l INFO
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+
+  # To run the command inside docker
+  celery-beat:
+    build:
+      context: .
+      dockerfile: ./celery/Dockerfile
+    command: celery -A main beat -l INFO
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+
+  db-chat:
+    image: postgres:13
+    volumes:
+      - messagingDB:/var/lib/postgresql/data
+    env_file: 
+      - ./.env_db_chat
+    ports:
+      - "5433:5433"
+    networks:
+      - app-network
+
+  chat:
+    build:
+      context: chat
+      dockerfile: Dockerfile.dev
+    container_name: chat
+    restart: always
+    volumes:
+      - /usr/src/chat/node_modules
+      - ./chat/:/usr/src/chat
+    ports:
+      - "7777:7777"
+      - "9229:9229"
+    command:
+      "npm run debug"
+    env_file: 
+      - ./.env
+    environment:
+      - DUMMY=0
+    depends_on:
+      - db-chat
+      - pubsub
+    networks:
+      - app-network
+
+  pubsub:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  messagingDB:

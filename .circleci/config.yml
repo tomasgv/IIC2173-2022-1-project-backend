@@ -1,0 +1,60 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+# See: https://circleci.com/docs/2.0/configuration-reference
+version: 2.1
+
+# Orbs are reusable packages of CircleCI configuration that you may share across projects, enabling you to create encapsulated, parameterized commands, jobs, and executors that can be used across multiple projects.
+# See: https://circleci.com/docs/2.0/orb-intro/
+orbs:
+  ruby: circleci/ruby@1.4.0
+  aws-code-deploy: circleci/aws-code-deploy@1.0.1
+
+# Define a job to be invoked later in a workflow.
+# See: https://circleci.com/docs/2.0/configuration-reference/#jobs
+jobs:
+  build:
+    docker:
+      - image: cimg/ruby:3.0.2
+      - image: circleci/postgres:latest-postgis
+        environment:
+          POSTGRES_USER: postgres 
+          POSTGRES_PASSWORD: docker 
+          POSTGRES_DB: pingder-db
+    environment:
+      POSTGRES_HOST: localhost
+      RAILS_ENV: test
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: cd rest_api; bundle install
+      - run:
+          name: Wait database
+          command: cd rest_api; dockerize -wait tcp://localhost:5432 -timeout 1m
+      - run:
+          name: Setup database 
+          command: cd rest_api; bundle exec rake db:setup
+
+# Invoke jobs via workflows
+# See: https://circleci.com/docs/2.0/configuration-reference/#workflows
+workflows:
+  sample:
+    jobs:
+      - build
+
+  deploy_application:
+    
+    # jobs are used to perform actions i.e. run instructions    
+    jobs:
+      - aws-code-deploy/deploy:
+          application-name: $APP_NAME
+          bundle-bucket: $BUCKET_NAME
+          bundle-key: code/source
+          deployment-group: $DEPLOYMENT_GROUP
+          service-role-arn: $ARN
+          filters:
+            branches:
+              only:
+                - master
+                - dev
+                - refactor/cd-scripts
+  

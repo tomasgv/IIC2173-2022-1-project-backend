@@ -1,0 +1,6 @@
+#./django-docker/app/requirements.txt
+#Packages
+Django==3.2.11
+psycopg2-binary==2.8.6
+celery[redis]==5.0
+djangorestframework
